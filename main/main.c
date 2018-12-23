@@ -20,7 +20,7 @@ static const char* TAG = "camera";
 //M5STACK_CAM PIN Map
 #define CAM_PIN_RESET   15 //software reset will be performed
 #define CAM_PIN_XCLK    27
-#define CAM_PIN_SIOD    25
+#define CAM_PIN_SIOD    22
 #define CAM_PIN_SIOC    23
 
 #define CAM_PIN_D7      19
@@ -32,7 +32,7 @@ static const char* TAG = "camera";
 #define CAM_PIN_D1      35
 #define CAM_PIN_D0      32
 
-#define CAM_PIN_VSYNC   22
+#define CAM_PIN_VSYNC   25
 #define CAM_PIN_HREF    26
 #define CAM_PIN_PCLK    21
 
@@ -52,6 +52,20 @@ static const char* _STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %
 static EventGroupHandle_t s_wifi_event_group;
 static ip4_addr_t s_ip_addr;
 const int CONNECTED_BIT = BIT0;
+
+
+#define EXAMPLE_ESP_WIFI_MODE_AP CONFIG_ESP_WIFI_MODE_AP  // TRUE:AP FALSE:STA
+#define EXAMPLE_ESP_WIFI_SSID CONFIG_ESP_WIFI_SSID
+#define EXAMPLE_ESP_WIFI_PASS CONFIG_ESP_WIFI_PASSWORD
+
+
+#if EXAMPLE_ESP_WIFI_MODE_AP
+static void wifi_init_softap(void);
+#else
+static void wifi_init_sta(void);
+#endif 
+
+
 
 static camera_config_t camera_config = {
     .pin_reset = CAM_PIN_RESET,
@@ -83,7 +97,8 @@ static camera_config_t camera_config = {
     .fb_count = 3 //if more than one, i2s runs in continuous mode. Use only with JPEG
 };
 
-static void wifi_init_softap();
+
+
 static esp_err_t http_server_init();
 
 void app_main()
@@ -101,7 +116,13 @@ void app_main()
         ESP_LOGE(TAG, "Camera Init Failed");
     }
     
+   #if EXAMPLE_ESP_WIFI_MODE_AP
+    ESP_LOGI(TAG, "ESP_WIFI_MODE_AP");
     wifi_init_softap();
+#else
+    ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
+    wifi_init_sta();
+#endif
 
     vTaskDelay(100 / portTICK_PERIOD_MS);
     http_server_init();
@@ -240,12 +261,19 @@ static esp_err_t event_handler(void* ctx, system_event_t* event)
     case SYSTEM_EVENT_AP_STACONNECTED:
       ESP_LOGI(TAG, "station:" MACSTR " join, AID=%d", MAC2STR(event->event_info.sta_connected.mac),
                event->event_info.sta_connected.aid);
+
+
+#if EXAMPLE_ESP_WIFI_MODE_AP
       xEventGroupSetBits(s_wifi_event_group, CONNECTED_BIT);
+#endif
       break;
     case SYSTEM_EVENT_AP_STADISCONNECTED:
       ESP_LOGI(TAG, "station:" MACSTR "leave, AID=%d", MAC2STR(event->event_info.sta_disconnected.mac),
                event->event_info.sta_disconnected.aid);
+#if EXAMPLE_ESP_WIFI_MODE_AP
       xEventGroupClearBits(s_wifi_event_group, CONNECTED_BIT);
+#endif
+
       break;
     case SYSTEM_EVENT_STA_DISCONNECTED:
       esp_wifi_connect();
@@ -256,7 +284,7 @@ static esp_err_t event_handler(void* ctx, system_event_t* event)
   }
   return ESP_OK;
 }
-
+#if EXAMPLE_ESP_WIFI_MODE_AP
 static void wifi_init_softap() 
 {
   s_wifi_event_group = xEventGroupCreate();
@@ -288,4 +316,30 @@ static void wifi_init_softap()
            ESP_WIFI_SSID, ESP_WIFI_PASS);
 }
 
+
+#else
+static void wifi_init_sta() 
+{
+    s_wifi_event_group = xEventGroupCreate();
+
+    tcpip_adapter_init();
+    ESP_ERROR_CHECK(esp_event_loop_init(event_handler, NULL));
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    wifi_config_t wifi_config = {
+        .sta = {.ssid = EXAMPLE_ESP_WIFI_SSID, .password = EXAMPLE_ESP_WIFI_PASS},
+    };
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    ESP_LOGI(TAG, "wifi_init_sta finished.");
+    ESP_LOGI(TAG, "connect to ap SSID:%s password:%s", EXAMPLE_ESP_WIFI_SSID,
+            EXAMPLE_ESP_WIFI_PASS);
+    
+    xEventGroupWaitBits(s_wifi_event_group, CONNECTED_BIT, false, true, portMAX_DELAY);
+}
+#endif
 #endif
