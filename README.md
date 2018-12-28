@@ -1,4 +1,4 @@
-# M5Stack Camera with psram base in [esp32-camera](https://github.com/espressif/esp32-camera.git)
+# M5Stack Camera with psram base in [m5stack-cam-psram]https://github.com/m5stack/m5stack-cam-psram)
 
 
 +make menuconfig
